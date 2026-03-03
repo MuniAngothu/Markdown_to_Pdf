@@ -486,23 +486,43 @@ li {
 }
 
 /* ── Section card (H4 + list grouped) ───────────────────────
-   Wraps each numbered section (h4 + ul) in a subtle card.     */
+   Wraps each numbered section (h4 + ul) in a clearly visible card. */
 .section-box {
-    background : #f8fafc;
-    border-left: 3px solid #93c5fd;
-    padding    : 6pt 12pt 8pt 12pt;
-    margin     : 8pt 0 12pt 0;
+    background   : #eef4ff;
+    border-left  : 4px solid #3b82f6;
+    border-bottom: 1px solid #bfdbfe;
+    padding      : 8pt 14pt 10pt 14pt;
+    margin       : 10pt 0 14pt 0;
 }
 
 .section-box h4 {
-    margin-top : 0;
-    border-left: none;
+    margin-top  : 0;
+    margin-bottom: 5pt;
+    border-left : none;
     padding-left: 0;
+    font-size   : 11pt;
+    color       : #1e3a8a;
 }
 
 .section-box ul,
 .section-box ol {
     margin-top : 4pt;
+    margin-left: 16pt;
+}
+
+.section-box li {
+    color       : #1e293b;
+    line-height : 1.75;
+    margin-bottom: 5pt;
+}
+
+/* Bold key terms inside list items — subtle blue pill highlight */
+.section-box li strong,
+.section-box li b {
+    color      : #1d4ed8;
+    background : #dbeafe;
+    padding    : 0pt 3pt;
+    font-weight: bold;
 }
 
 /* ── Conclusion / summary highlight ─────────────────────────
