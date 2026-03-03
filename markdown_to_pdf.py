@@ -288,11 +288,72 @@ def add_code_box_headers(html: str) -> str:
     return html
 
 
+def add_alternating_rows(html: str) -> str:
+    """
+    Inject alternating background colours on <tbody> rows.
+    xhtml2pdf doesn't support :nth-child, so we do it in Python.
+    Odd rows get a very light blue-grey (#f0f4f8); even rows stay white.
+    """
+    def stripe_tbody(m: re.Match) -> str:
+        idx   = [0]
+        tbody = m.group(0)
+
+        def color_row(rm: re.Match) -> str:
+            bg = "#f0f4f8" if idx[0] % 2 == 1 else "#ffffff"
+            idx[0] += 1
+            return f'<tr style="background:{bg};">'
+
+        return re.sub(r"<tr>", color_row, tbody)
+
+    return re.sub(r"<tbody>.*?</tbody>", stripe_tbody, html, flags=re.DOTALL)
+
+
+def add_section_boxes(html: str) -> str:
+    """
+    Wrap each <h4> followed immediately by a <ul> or <ol> inside a
+    .section-box div so numbered sub-sections appear as subtle cards.
+    """
+    html = re.sub(
+        r"(<h4>.*?</h4>)\s*(<(?:ul|ol)[^>]*>.*?</(?:ul|ol)>)",
+        lambda m: (
+            '<div class="section-box">'
+            f"{m.group(1)}"
+            f"{m.group(2)}"
+            "</div>"
+        ),
+        html,
+        flags=re.DOTALL,
+    )
+    return html
+
+
+def wrap_conclusion(html: str) -> str:
+    """
+    Find the last <h2> that contains 'Conclusion' and wrap the paragraph
+    immediately following it in a .conclusion-box div.
+    """
+    html = re.sub(
+        r"(<h2>[^<]*[Cc]onclusion[^<]*</h2>)\s*(<p>.*?</p>)",
+        lambda m: (
+            m.group(1)
+            + '\n<div class="conclusion-box">'
+            + m.group(2)
+            + "</div>"
+        ),
+        html,
+        flags=re.DOTALL,
+    )
+    return html
+
+
 def postprocess(html: str) -> str:
     html = make_callout_boxes(html)
     html = strip_pygments_backgrounds(html)
     html = fix_pre_whitespace(html)
-    html = add_code_box_headers(html)   # must run AFTER whitespace is fixed
+    html = add_code_box_headers(html)     # must run AFTER whitespace is fixed
+    html = add_section_boxes(html)        # card-wrap H4 + list sections
+    html = add_alternating_rows(html)     # stripe table rows (no :nth-child)
+    html = wrap_conclusion(html)          # green highlight on Conclusion para
     return html
 
 
@@ -342,23 +403,26 @@ h2 {
     line-height   : 1.3;
 }
 
-/* H3 — sub-section: slightly muted, no border */
+/* H3 — sub-section: clear, readable, differentiated from H2 */
 h3 {
-    font-size    : 10.5pt;
-    font-weight  : bold;
-    color        : #444444;
-    margin-top   : 14pt;
-    margin-bottom: 3pt;
-    text-transform: uppercase;
+    font-size     : 11pt;
+    font-weight   : bold;
+    color         : #374151;
+    margin-top    : 16pt;
+    margin-bottom : 4pt;
+    padding-bottom: 3pt;
+    border-bottom : 1px solid #e5e7eb;
 }
 
-/* H4 — label-level */
+/* H4 — numbered section label: visible, accent-colored */
 h4 {
-    font-size    : 10pt;
+    font-size    : 10.5pt;
     font-weight  : bold;
-    color        : #777777;
-    margin-top   : 10pt;
-    margin-bottom: 2pt;
+    color        : #1a3a6b;
+    margin-top   : 14pt;
+    margin-bottom: 4pt;
+    padding-left : 9pt;
+    border-left  : 3px solid #63b3ed;
 }
 
 /* ── Body text ───────────────────────────────────────────── */
@@ -367,7 +431,7 @@ p {
     color : #37352f;
 }
 
-strong, b { color: #111111; font-weight: bold; }
+strong, b { color: #0f3460; font-weight: bold; }
 em,     i { color: #595959; font-style: italic; }
 
 a {
@@ -419,6 +483,38 @@ li {
 .callout li {
     margin-bottom: 4pt;
     color        : #1a1a1a;
+}
+
+/* ── Section card (H4 + list grouped) ───────────────────────
+   Wraps each numbered section (h4 + ul) in a subtle card.     */
+.section-box {
+    background : #f8fafc;
+    border-left: 3px solid #93c5fd;
+    padding    : 6pt 12pt 8pt 12pt;
+    margin     : 8pt 0 12pt 0;
+}
+
+.section-box h4 {
+    margin-top : 0;
+    border-left: none;
+    padding-left: 0;
+}
+
+.section-box ul,
+.section-box ol {
+    margin-top : 4pt;
+}
+
+/* ── Conclusion / summary highlight ─────────────────────────
+   Green-teal box drawing attention to the key takeaway.        */
+.conclusion-box {
+    background : #f0fdf4;
+    border-left: 4px solid #16a34a;
+    padding    : 10pt 14pt;
+    margin     : 10pt 0 14pt 0;
+    color      : #14532d;
+    font-size  : 10.5pt;
+    line-height: 1.8;
 }
 
 /* ── Inline code ─────────────────────────────────────────── */
