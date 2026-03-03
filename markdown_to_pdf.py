@@ -91,6 +91,12 @@ def make_callout_boxes(html: str) -> str:
         <ul>...</ul>
         → <div class="callout"><span class="callout-label">Label:</span><ul>...</ul></div>
     """
+    # Protect <p> tags inside <li> (loose markdown lists wrap each item in <p>).
+    # Without this, bold-titled list items get eaten by the callout regex,
+    # which destroys the <ol>/<ul> numbering/bullets.
+    LIPARA = "__LI_PARA_PLACEHOLDER__"
+    html = re.sub(r'(<li[^>]*>\s*)<p>', r'\1' + LIPARA, html, flags=re.DOTALL)
+
     # Pattern B: label-only paragraph followed by <ul> or <ol>
     html = re.sub(
         r'<p><strong>([^<]+:)</strong>\s*</p>\s*(<(?:ul|ol)[^>]*>.*?</(?:ul|ol)>)',
@@ -116,6 +122,9 @@ def make_callout_boxes(html: str) -> str:
         html,
         flags=re.DOTALL,
     )
+
+    # Restore protected <p> tags inside <li>
+    html = html.replace(LIPARA, '<p>')
 
     return html
 
@@ -310,11 +319,13 @@ def add_alternating_rows(html: str) -> str:
 
 def add_section_boxes(html: str) -> str:
     """
-    Wrap each <h4> followed immediately by a <ul> or <ol> inside a
-    .section-box div so numbered sub-sections appear as subtle cards.
+    Wrap each <h4> followed immediately by a <ul> (bullet list) inside a
+    .section-box div.  <ol> (numbered lists) are left untouched so their
+    numbers remain visible — numbered lists render as clean research-paper
+    style without any box decoration.
     """
     html = re.sub(
-        r"(<h4>.*?</h4>)\s*(<(?:ul|ol)[^>]*>.*?</(?:ul|ol)>)",
+        r"(<h4>.*?</h4>)\s*(<ul[^>]*>.*?</ul>)",
         lambda m: (
             '<div class="section-box">'
             f"{m.group(1)}"
@@ -351,7 +362,6 @@ def postprocess(html: str) -> str:
     html = strip_pygments_backgrounds(html)
     html = fix_pre_whitespace(html)
     html = add_code_box_headers(html)     # must run AFTER whitespace is fixed
-    html = add_section_boxes(html)        # card-wrap H4 + list sections
     html = add_alternating_rows(html)     # stripe table rows (no :nth-child)
     html = wrap_conclusion(html)          # green highlight on Conclusion para
     return html
@@ -440,8 +450,14 @@ a {
 }
 
 /* ── Lists ───────────────────────────────────────────────── */
-ul, ol {
-    margin : 4pt 0 9pt 22pt;
+ul {
+    margin : 4pt 0 9pt 18pt;
+    padding: 0;
+}
+
+/* ol overridden further down in the "Numbered ordered lists" block */
+ol {
+    margin : 4pt 0 9pt 0;
     padding: 0;
 }
 
@@ -452,12 +468,12 @@ li {
 }
 
 /* ── Callout / Focus box ─────────────────────────────────── */
-/* Notion-style: icon prefix, soft blue tint, left accent     */
+/* Clean card: neutral warm-grey, full border, no side line    */
 .callout {
-    background : #f0f7ff;
-    border-left: 4px solid #2f80ed;
-    padding    : 10pt 14pt 10pt 14pt;
-    margin     : 12pt 0 14pt 0;
+    background : #f7f6f3;
+    border     : 1px solid #e0ddd8;
+    padding    : 9pt 13pt 9pt 13pt;
+    margin     : 10pt 0 12pt 0;
     color      : #1a1a1a;
     font-size  : 10.5pt;
     line-height: 1.7;
@@ -465,13 +481,13 @@ li {
 
 .callout-label {
     font-weight   : bold;
-    color         : #1a6bbf;
+    color         : #374151;
     font-size     : 8.5pt;
     text-transform: uppercase;
     display       : block;
     margin-bottom : 5pt;
     padding-bottom: 4pt;
-    border-bottom : 1px solid #c8dff8;
+    border-bottom : 1px solid #d1cec8;
 }
 
 .callout ul,
@@ -485,43 +501,32 @@ li {
     color        : #1a1a1a;
 }
 
-/* ── Section card (H4 + list grouped) ───────────────────────
-   Wraps each numbered section (h4 + ul) in a clearly visible card. */
-.section-box {
-    background   : #eef4ff;
-    border-left  : 4px solid #3b82f6;
-    border-bottom: 1px solid #bfdbfe;
-    padding      : 8pt 14pt 10pt 14pt;
-    margin       : 10pt 0 14pt 0;
+
+
+/* ── Numbered ordered lists — research-paper style ──────────
+   NO boxes. Numbers visible, clean, indented.                  */
+ol {
+    margin         : 6pt 0 10pt 0;
+    padding-left   : 22pt;
+    list-style-type: decimal;
 }
 
-.section-box h4 {
-    margin-top  : 0;
-    margin-bottom: 5pt;
-    border-left : none;
-    padding-left: 0;
-    font-size   : 11pt;
-    color       : #1e3a8a;
+ol li {
+    margin-bottom: 9pt;
+    color        : #37352f;
+    line-height  : 1.75;
+    padding-left : 3pt;
 }
 
-.section-box ul,
-.section-box ol {
-    margin-top : 4pt;
-    margin-left: 16pt;
+ol li p {
+    margin : 0;
+    display: inline;
 }
 
-.section-box li {
-    color       : #1e293b;
-    line-height : 1.75;
-    margin-bottom: 5pt;
-}
-
-/* Bold key terms inside list items — subtle blue pill highlight */
-.section-box li strong,
-.section-box li b {
-    color      : #1d4ed8;
-    background : #dbeafe;
-    padding    : 0pt 3pt;
+/* Bold title inside a numbered-list item */
+ol li strong,
+ol li b {
+    color      : #0f3460;
     font-weight: bold;
 }
 
