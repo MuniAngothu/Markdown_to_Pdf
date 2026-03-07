@@ -24,9 +24,15 @@ Dependencies:
   pip install markdown xhtml2pdf Pygments
 """
 
+import io
 import re
 from pathlib import Path
+
 import markdown
+from PIL import Image
+from pypdf import PdfReader, PdfWriter
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as rl_canvas
 from xhtml2pdf import pisa
 
 
@@ -37,6 +43,7 @@ from xhtml2pdf import pisa
 BASE_DIR     = Path(r"c:\Users\angot\Documents\GitHub\MD")
 MARKDOWN_DIR = BASE_DIR / "input"    # input  — all .md files live here
 PDF_DIR      = BASE_DIR / "output"   # output — all .pdf files go here
+LOGO_PATH    = BASE_DIR / "logo dpi 400.png"   # DMV CORETECH watermark
 
 # Create output folder if it doesn't exist yet
 PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -664,7 +671,102 @@ HTML_TEMPLATE = """\
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SECTION 6 — PDF RENDERING
+# SECTION 6a — WATERMARK
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _prepare_logo_png() -> tuple[io.BytesIO, int, int]:
+    """
+    Open the logo, strip near-white BG pixels, set remaining pixels to
+    OPACITY alpha so the logo is genuinely semi-transparent in the PDF.
+    Returns PNG buffer + original pixel dimensions.
+    """
+    OPACITY = 0.30          # 30 % — clearly visible, professional feel
+
+    logo = Image.open(LOGO_PATH).convert("RGBA")
+    px = logo.load()
+    w, h = logo.size
+    for row in range(h):
+        for col in range(w):
+            r, g, b, a = px[col, row]
+            if r > 220 and g > 220 and b > 220:   # near-white → fully transparent
+                px[col, row] = (r, g, b, 0)
+            else:
+                px[col, row] = (r, g, b, int(a * OPACITY))
+    buf = io.BytesIO()
+    logo.save(buf, format="PNG")
+    buf.seek(0)
+    return buf, w, h
+
+
+# Cached logo PNG (buffer, pixel_w, pixel_h)
+_LOGO_PNG: tuple[io.BytesIO, int, int] | None = None
+
+
+def _get_logo_png() -> tuple[io.BytesIO, int, int]:
+    global _LOGO_PNG
+    if _LOGO_PNG is None:
+        _LOGO_PNG = _prepare_logo_png()
+    return _LOGO_PNG
+
+
+def _build_watermark_page(page_w_pt: float, page_h_pt: float) -> bytes:
+    """
+    Render a single-page PDF watermark sized to *page_w_pt* × *page_h_pt*.
+    The logo is centred on the page, upright, no rotation.
+    True alpha on the PNG lets all page content show through.
+    """
+    png_buf, logo_px_w, logo_px_h = _get_logo_png()
+    png_buf.seek(0)
+
+    img_w_pt = page_w_pt * 0.50                            # 50 % of page width
+    img_h_pt = img_w_pt * (logo_px_h / logo_px_w)         # keep aspect ratio
+
+    x = (page_w_pt - img_w_pt) / 2                        # horizontally centred
+    y = (page_h_pt - img_h_pt) / 2                        # vertically centred
+
+    pdf_buf = io.BytesIO()
+    c = rl_canvas.Canvas(pdf_buf, pagesize=(page_w_pt, page_h_pt))
+    c.drawImage(ImageReader(png_buf), x, y, img_w_pt, img_h_pt, mask="auto")
+    c.save()
+    pdf_buf.seek(0)
+    return pdf_buf.getvalue()
+
+
+def apply_watermark(pdf_path: Path) -> None:
+    """
+    Overlay the DMV CORETECH logo watermark on every page of *pdf_path*
+    in-place, placing it **behind** all page content.
+
+    The watermark is rebuilt to exactly match each page's mediabox so there
+    is no clipping regardless of the page size xhtml2pdf produces.
+    """
+    reader = PdfReader(str(pdf_path))
+    writer = PdfWriter()
+
+    for page in reader.pages:
+        # Read the actual page dimensions so the watermark fits perfectly
+        mb      = page.mediabox
+        page_w  = float(mb.width)
+        page_h  = float(mb.height)
+
+        wm_bytes  = _build_watermark_page(page_w, page_h)
+        wm_reader = PdfReader(io.BytesIO(wm_bytes))
+        stamp     = wm_reader.pages[0]
+
+        # Merge watermark ON TOP of content — the watermark PNG uses true
+        # alpha so only logo pixels are visible; the content underneath
+        # shows through everywhere else.  This avoids xhtml2pdf's opaque
+        # white body background blocking a behind-the-page watermark.
+        page.merge_page(stamp)
+        writer.add_page(page)
+
+    with open(str(pdf_path), "wb") as fh:
+        writer.write(fh)
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 6b — PDF RENDERING
 # ═══════════════════════════════════════════════════════════════════════════
 
 def render_pdf(html_string: str, output_path: Path) -> bool:
@@ -693,6 +795,11 @@ def convert_file(md_path: Path) -> None:
 
     # Step 5: Render PDF
     success = render_pdf(full_html, pdf_path)
+
+    # Step 6: Stamp watermark on every page
+    if success:
+        apply_watermark(pdf_path)
+
     status  = "OK " if success else "ERR"
     print(f"  [{status}]  {md_path.name}  →  output/{pdf_path.name}")
 
